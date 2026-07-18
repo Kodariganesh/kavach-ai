@@ -102,7 +102,7 @@ class Explanation(BaseModel):
     patch_before: str
     patch_after: str
     patch_is_actionable: bool = True
-    source: Literal["openai", "fallback", "policy"] = "fallback"
+    source: Literal["openai", "gemini", "fallback", "policy"] = "fallback"
     model: str | None = None
     notice: str | None = None
 

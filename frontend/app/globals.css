@@ -90,6 +90,7 @@ h2 { margin: 0 0 8px; font-size: 25px; }
 .finding-label { font-size: 12px; font-weight: bold; color: #dde9f1; margin: 14px 0 3px; }
 .analysis-source { border-top: 1px solid #1b2a38; color: var(--muted); font-size: 10px; margin: 10px 0 0; padding-top: 10px; text-transform: uppercase; letter-spacing: .7px; }
 .analysis-source.openai { color: #6bd8cb; }
+.analysis-source.gemini { color: #aab7ff; }
 .analysis-source.policy { color: var(--yellow); }
 
 .code { margin: 13px 0; background: #08121b; border-radius: 5px; border-left: 3px solid; padding: 10px; }

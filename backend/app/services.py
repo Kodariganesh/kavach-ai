@@ -198,7 +198,7 @@ class MissionService:
                 raise
             self._trace_finished(
                 record.mission, trace_id, started, "completed", "Remediation guidance prepared.",
-                {"finding_count": len(analyses), "openai_response_count": sum(item.source == "openai" for item in analyses.values())},
+                {"finding_count": len(analyses), "ai_response_count": sum(item.source in {"openai", "gemini"} for item in analyses.values())},
             )
 
             with record.lock:

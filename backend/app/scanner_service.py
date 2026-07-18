@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from app.models import Finding, ScannerStatus, Severity
@@ -13,15 +14,23 @@ from app.models import Finding, ScannerStatus, Severity
 class ScannerService:
     """Runs supported scanners and normalizes their reports into stable findings."""
 
+    _IGNORED_DIRECTORY_NAMES = frozenset({".git", ".venv", "venv", "env", "node_modules", "vendor", "dist", "build"})
+
     def __init__(self, timeout_seconds: int | None = None) -> None:
-        configured_timeout = os.getenv("KAVACH_SCANNER_TIMEOUT_SECONDS", "180")
+        configured_timeout = os.getenv("KAVACH_SCANNER_TIMEOUT_SECONDS", "120")
         self._timeout_seconds = timeout_seconds or int(configured_timeout)
 
     def scan(self, workspace: Path) -> tuple[list[Finding], list[ScannerStatus]]:
         findings: list[Finding] = []
         statuses: list[ScannerStatus] = []
-        for scanner in ("Semgrep", "Bandit", "Gitleaks"):
-            scanner_findings, scanner_status = self.scan_for(scanner, workspace)
+        scanners = ("Semgrep", "Bandit", "Gitleaks")
+        # Independent scanners should not make a mission wait for each other.
+        # Results are collected in a stable order for predictable reports.
+        with ThreadPoolExecutor(max_workers=len(scanners), thread_name_prefix="kavach-scanner") as executor:
+            futures = {scanner: executor.submit(self.scan_for, scanner, workspace) for scanner in scanners}
+            results = {scanner: futures[scanner].result() for scanner in scanners}
+        for scanner in scanners:
+            scanner_findings, scanner_status = results[scanner]
             findings.extend(scanner_findings)
             statuses.append(scanner_status)
         return findings, statuses
@@ -39,10 +48,7 @@ class ScannerService:
         return runner(workspace)
 
     def _run_semgrep(self, workspace: Path) -> tuple[list[Finding], ScannerStatus]:
-        result = self._execute(
-            "Semgrep",
-            ["semgrep", "scan", "--config", "auto", "--json", "--quiet", str(workspace)],
-        )
+        result = self._execute("Semgrep", self._semgrep_command(workspace))
         if isinstance(result, ScannerStatus):
             return [], result
         try:
@@ -64,7 +70,7 @@ class ScannerService:
             return [], ScannerStatus(scanner="Semgrep", status="failed", detail=f"Could not parse scanner output: {error}")
 
     def _run_bandit(self, workspace: Path) -> tuple[list[Finding], ScannerStatus]:
-        ignored_paths = ",".join(str(workspace / name) for name in (".git", "node_modules", ".venv", "venv"))
+        ignored_paths = ",".join(str(path) for path in self._ignored_directories(workspace))
         result = self._execute(
             "Bandit",
             ["bandit", "-r", str(workspace), "-f", "json", "-q", "-x", ignored_paths],
@@ -84,6 +90,7 @@ class ScannerService:
                     description=item.get("issue_text", "Security issue detected by Bandit."),
                 )
                 for item in report.get("results", [])
+                if not self._is_ignored_path(self._relative_path(workspace, item["filename"]))
             ]
             return findings, ScannerStatus(scanner="Bandit", status="complete", detail=f"{len(findings)} finding(s) detected")
         except (json.JSONDecodeError, KeyError, TypeError) as error:
@@ -99,8 +106,7 @@ class ScannerService:
                 "Gitleaks",
                 [
                     "gitleaks",
-                    "detect",
-                    "--source",
+                    "dir",
                     str(workspace),
                     "--report-format",
                     "json",
@@ -174,6 +180,25 @@ class ScannerService:
             return str(Path(file_path).resolve().relative_to(workspace.resolve()))
         except ValueError:
             return file_path
+
+    def _ignored_directories(self, workspace: Path) -> list[Path]:
+        """Find dependency/generated directories at any nesting level for Bandit exclusion."""
+        ignored: list[Path] = []
+        for root, directories, _ in os.walk(workspace):
+            excluded = [name for name in directories if name.lower() in self._IGNORED_DIRECTORY_NAMES]
+            ignored.extend(Path(root) / name for name in excluded)
+            directories[:] = [name for name in directories if name not in excluded]
+        return ignored
+
+    def _semgrep_command(self, workspace: Path) -> list[str]:
+        command = ["semgrep", "scan", "--config", "auto", "--json", "--quiet"]
+        for directory_name in sorted(self._IGNORED_DIRECTORY_NAMES):
+            command.extend(["--exclude", directory_name])
+        command.append(str(workspace))
+        return command
+
+    def _is_ignored_path(self, file_path: str) -> bool:
+        return any(part.lower() in self._IGNORED_DIRECTORY_NAMES for part in Path(file_path).parts)
 
     @staticmethod
     def _severity(value: str | None) -> Severity:

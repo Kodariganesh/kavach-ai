@@ -59,7 +59,7 @@ type Explanation = {
   patch_before: string;
   patch_after: string;
   patch_is_actionable: boolean;
-  source: "openai" | "fallback" | "policy";
+  source: "openai" | "gemini" | "fallback" | "policy";
   model?: string | null;
   notice?: string | null;
 };
@@ -425,7 +425,7 @@ export default function Home() {
               <Insight title="Root cause" text={explanation.root_cause} />
               <Insight title="Potential impact" text={explanation.impact} />
               <Insight title="Recommended fix" text={explanation.recommendation} />
-              <p className={`analysis-source ${explanation.source}`}>{explanation.source === "openai" ? `OpenAI analysis${explanation.model ? ` / ${explanation.model}` : ""}` : explanation.source === "policy" ? "Secret-protection policy response" : "Deterministic fallback guidance"}</p>
+              <p className={`analysis-source ${explanation.source}`}>{explanation.source === "openai" ? `OpenAI analysis${explanation.model ? ` / ${explanation.model}` : ""}` : explanation.source === "gemini" ? `Gemini analysis${explanation.model ? ` / ${explanation.model}` : ""}` : explanation.source === "policy" ? "Secret-protection policy response" : "Deterministic fallback guidance"}</p>
             </> : <EmptyState title="Select a finding" text="Kavach will show evidence-backed remediation only after a finding is selected." />}
           </div>
 

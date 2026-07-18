@@ -1,6 +1,7 @@
 import os
 import stat
 import shutil
+import tempfile
 import time
 from pathlib import Path
 from urllib.parse import urlparse
@@ -16,7 +17,10 @@ class RepositoryService:
     """Validates, clones, and cleans up a mission's temporary repository."""
 
     def __init__(self, workspace_root: Path | None = None) -> None:
-        self._workspace_root = workspace_root or Path(__file__).resolve().parents[1] / "workspaces"
+        configured_root = os.getenv("KAVACH_WORKSPACE_ROOT")
+        self._workspace_root = workspace_root or (
+            Path(configured_root) if configured_root else Path(tempfile.gettempdir()) / "kavach-ai-workspaces"
+        )
 
     def clone(self, repository_url: str, mission_id: str) -> tuple[str, Path]:
         repository_name = self.validate_url(repository_url)

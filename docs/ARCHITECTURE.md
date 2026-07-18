@@ -37,7 +37,7 @@ Evidence -> AI explanation -> Human approval -> Isolated verification -> Applied
 | Module | Responsibility |
 | --- | --- |
 | `services.py` | Mission state machine and orchestration of every security step. |
-| `repository_service.py` | Validate public GitHub HTTPS URLs, shallow-clone, and clean temporary workspaces. |
+| `repository_service.py` | Validate public GitHub HTTPS URLs, shallow-clone into an OS temporary workspace, and clean it after the mission. |
 | `scanner_service.py` | Run scanner adapters and normalize outputs into stable finding IDs/fingerprints. |
 | `ai_service.py` | Build bounded, redacted evidence context and request schema-constrained remediation from OpenAI. |
 | `patch_service.py` | Apply only an exact, human-approved replacement within the mission workspace. |

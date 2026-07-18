@@ -5,7 +5,9 @@ from pathlib import Path
 from app.ai_service import AnalysisService
 from app.models import Explanation, Finding, PatchProposal, ScannerStatus, Severity
 from app.patch_service import PatchError, PatchService
+from app.repository_service import RepositoryService
 from app.services import MissionService
+from app.scanner_service import ScannerService
 from app.verification_service import VerificationService
 
 
@@ -112,6 +114,25 @@ class SecurityWorkflowTests(unittest.TestCase):
         self.assertEqual(explanation.source, "policy")
         self.assertFalse(explanation.patch_is_actionable)
         self.assertIn("rotate", explanation.recommendation.lower())
+
+    def test_scanner_ignores_nested_dependency_directories(self) -> None:
+        nested_venv = self.workspace / "agent" / "venv"
+        nested_venv.mkdir(parents=True)
+        self.assertTrue(ScannerService()._is_ignored_path("agent/venv/Lib/site-packages/pip.py"))
+        self.assertFalse(ScannerService()._is_ignored_path("agent/receivables.py"))
+        ignored = ScannerService()._ignored_directories(self.workspace)
+        self.assertIn(nested_venv, ignored)
+
+    def test_semgrep_command_excludes_dependency_directories(self) -> None:
+        command = ScannerService()._semgrep_command(self.workspace)
+        self.assertIn("--exclude", command)
+        self.assertIn("venv", command)
+        self.assertIn("node_modules", command)
+
+    def test_default_workspace_is_outside_the_project_directory(self) -> None:
+        workspace_root = RepositoryService()._workspace_root
+        self.assertEqual(workspace_root.name, "kavach-ai-workspaces")
+        self.assertNotIn("Kavach Ai", str(workspace_root))
 
     def test_mission_orchestrator_completes_a_verified_remediation_loop(self) -> None:
         service = MissionService()
