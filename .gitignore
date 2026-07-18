@@ -1,0 +1,16 @@
+# JavaScript
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Local configuration and generated data
+.env
+.env.local
+backend/workspaces/

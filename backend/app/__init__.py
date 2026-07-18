@@ -1,0 +1,2 @@
+"""Kavach AI backend application."""
+
