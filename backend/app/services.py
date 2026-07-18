@@ -14,10 +14,12 @@ from app.models import (
     MissionReport,
     MissionStage,
     PatchProposal,
+    PatchReview,
     ScannerStatus,
     Severity,
     TimelineEvent,
     TraceEvent,
+    TriageDecision,
     VerificationResult,
     utc_now,
 )
@@ -168,13 +170,9 @@ class MissionService:
                     label="Security scan complete",
                     detail=self._scanner_summary(scanners, findings),
                 )
-                findings_to_triage = sorted(
-                    (finding.model_copy(deep=True) for finding in findings),
-                    key=lambda finding: self._SEVERITY_ORDER[finding.severity],
-                )[:3]
                 workspace_for_analysis = Path(record.mission.workspace_path)
 
-            if not findings_to_triage:
+            if not findings:
                 with record.lock:
                     self._advance(
                         record.mission,
@@ -185,6 +183,26 @@ class MissionService:
                         terminal=True,
                     )
                 return
+
+            trace_id, started = self._trace_started(
+                record.mission, "Triage Agent", "Prioritize findings", "Ranking scanner evidence before requesting remediation."
+            )
+            try:
+                triage = self._triage_findings([finding.model_copy(deep=True) for finding in findings])
+            except Exception as error:
+                self._trace_finished(record.mission, trace_id, started, "failed", "Finding prioritization failed.", {"error_type": type(error).__name__})
+                raise
+            self._trace_finished(
+                record.mission, trace_id, started, "completed", "Prioritized findings for remediation.",
+                {"finding_count": len(triage), "ai_response_count": sum(item.source in {"openai", "gemini"} for item in triage)},
+            )
+            with record.lock:
+                record.mission.triage = triage
+                triage_by_id = {item.finding_id: item for item in triage}
+                findings_to_triage = sorted(
+                    (finding.model_copy(deep=True) for finding in findings if finding.id in triage_by_id),
+                    key=lambda finding: triage_by_id[finding.id].priority_rank,
+                )[:3]
 
             trace_id, started = self._trace_started(
                 record.mission, "Remediation Agent", "Analyze prioritized findings", "Preparing bounded AI remediation from scanner evidence."
@@ -301,7 +319,23 @@ class MissionService:
                 source_line=finding.line,
             )
             record.proposals[proposal.id] = proposal
-            return proposal.model_copy(deep=True)
+
+        trace_id, started = self._trace_started(
+            record.mission, "Patch Review Agent", "Review proposed patch", "Independently checking the draft before human approval."
+        )
+        try:
+            review = self._review_patch(finding.model_copy(deep=True), proposal.model_copy(deep=True))
+        except Exception as error:
+            self._trace_finished(record.mission, trace_id, started, "failed", "Patch review could not complete.", {"error_type": type(error).__name__})
+            raise
+        self._trace_finished(
+            record.mission, trace_id, started, "completed", "Patch review prepared.",
+            {"source": review.source, "verdict": review.verdict},
+        )
+        with record.lock:
+            stored = record.proposals[proposal.id]
+            stored.review = review
+            return stored.model_copy(deep=True)
 
     def verify_patch(self, mission_id: str, patch_id: str) -> VerificationResult:
         record = self._record(mission_id)
@@ -443,6 +477,31 @@ class MissionService:
         if finding is None:
             raise WorkflowError("Finding not found for this mission.")
         return finding
+
+    def _triage_findings(self, findings: list[Finding]) -> list[TriageDecision]:
+        triage = getattr(self._analysis_service, "triage", None)
+        if callable(triage):
+            return triage(findings)
+        return [
+            TriageDecision(
+                finding_id=finding.id,
+                priority_rank=index,
+                rationale=f"{finding.severity.value.title()} severity scanner finding from {finding.scanner}.",
+                next_step="Review scanner evidence and prepare remediation.",
+            )
+            for index, finding in enumerate(sorted(findings, key=lambda item: self._SEVERITY_ORDER[item.severity]), start=1)
+        ]
+
+    def _review_patch(self, finding: Finding, proposal: PatchProposal) -> PatchReview:
+        review = getattr(self._analysis_service, "review_patch", None)
+        if callable(review):
+            return review(finding, proposal)
+        return PatchReview(
+            finding_id=finding.id,
+            verdict="manual_review",
+            summary="AI patch review is unavailable. A human must review this draft before isolated verification.",
+            source="fallback",
+        )
 
     @staticmethod
     def _scanner_summary(scanners: list[ScannerStatus], findings: list[Finding]) -> str:

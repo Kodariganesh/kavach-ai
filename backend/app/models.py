@@ -67,6 +67,29 @@ class Finding(BaseModel):
     status: Literal["open", "analyzed", "patch_ready", "verified"] = "open"
 
 
+class TriageDecision(BaseModel):
+    """A bounded priority decision made from scanner metadata, never source contents."""
+
+    finding_id: str
+    priority_rank: int = Field(ge=1)
+    rationale: str
+    next_step: str
+    source: Literal["gemini", "openai", "deterministic"] = "deterministic"
+    model: str | None = None
+
+
+class PatchReview(BaseModel):
+    """Independent safety review of a draft patch; it never applies the patch."""
+
+    finding_id: str
+    verdict: Literal["approved", "changes_requested", "manual_review"]
+    summary: str
+    concerns: list[str] = Field(default_factory=list)
+    source: Literal["gemini", "openai", "fallback"] = "fallback"
+    model: str | None = None
+    reviewed_at: datetime = Field(default_factory=utc_now)
+
+
 class ScannerStatus(BaseModel):
     scanner: str
     status: Literal["complete", "unavailable", "failed"]
@@ -86,6 +109,7 @@ class Mission(BaseModel):
     timeline: list[TimelineEvent] = Field(default_factory=list)
     trace: list[TraceEvent] = Field(default_factory=list)
     findings: list[Finding] = Field(default_factory=list)
+    triage: list[TriageDecision] = Field(default_factory=list)
     error: str | None = None
     latest_verification: "VerificationResult | None" = None
 
@@ -116,6 +140,7 @@ class PatchProposal(BaseModel):
     status: Literal["draft", "applied", "verified", "failed"] = "draft"
     created_at: datetime = Field(default_factory=utc_now)
     validation_note: str = "This patch has not been applied. Human approval is required."
+    review: PatchReview | None = None
 
 
 class VerificationResult(BaseModel):
@@ -145,5 +170,6 @@ class MissionReport(BaseModel):
     scanners: list[ScannerStatus]
     timeline: list[TimelineEvent]
     trace: list[TraceEvent]
+    triage: list[TriageDecision]
     latest_verification: VerificationResult | None = None
     generated_at: datetime = Field(default_factory=utc_now)

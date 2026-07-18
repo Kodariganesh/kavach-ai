@@ -2,7 +2,8 @@ import hashlib
 import json
 import os
 import shutil
-import subprocess
+# This module invokes only scanner commands built by Kavach's fixed adapters.
+import subprocess  # nosec B404
 import sys
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
@@ -109,7 +110,15 @@ class ScannerService:
             return ScannerStatus(scanner=scanner, status="unavailable", detail=f"Install {scanner} to enable this scan.")
         try:
             with tempfile.TemporaryFile() as output, tempfile.TemporaryFile() as errors:
-                subprocess.run(command, stdout=output, stderr=errors, timeout=self._timeout_seconds, check=False)
+                # `command` is built by Kavach's scanner adapters, never from repository contents or user shell input.
+                subprocess.run(  # nosec B603
+                    command,
+                    stdout=output,
+                    stderr=errors,
+                    timeout=self._timeout_seconds,
+                    check=False,
+                    shell=False,
+                )
                 if output.tell() > self._max_output_bytes or errors.tell() > self._max_output_bytes:
                     return ScannerStatus(scanner=scanner, status="failed", detail="Scanner output exceeded Kavach's safety limit.")
                 output.seek(0)

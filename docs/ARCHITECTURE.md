@@ -13,8 +13,10 @@ FastAPI API + Mission Orchestrator
         |      +--> Repository Intake (public GitHub, shallow clone)
         |      +--> Scanner Adapters (Semgrep, Bandit, Gitleaks)
         |      +--> Finding Normalizer + Risk Score
-        |      +--> OpenAI Remediation Analyst (structured output)
+        |      +--> Triage Agent (structured priority decisions)
+        |      +--> Remediation Agent (Gemini or OpenAI structured output)
         |
+        +--> Patch Review Agent (independent draft critique)
         +--> Human-approved Patch Service
         |      |
         |      +--> Isolated verification workspace
@@ -29,7 +31,7 @@ FastAPI API + Mission Orchestrator
 Kavach AI is a Security-theme product, not a generic scanner dashboard. A mission turns a scanner result into a traceable remediation decision:
 
 ```text
-Evidence -> AI explanation -> Human approval -> Isolated verification -> Applied patch -> Report
+Evidence -> AI triage -> AI explanation -> Patch review -> Human approval -> Isolated verification -> Applied patch -> Report
 ```
 
 ## Backend modules
@@ -39,10 +41,10 @@ Evidence -> AI explanation -> Human approval -> Isolated verification -> Applied
 | `services.py` | Mission state machine and orchestration of every security step. |
 | `repository_service.py` | Validate public GitHub HTTPS URLs, shallow-clone into an OS temporary workspace, and clean it after the mission. |
 | `scanner_service.py` | Run scanner adapters and normalize outputs into stable finding IDs/fingerprints. |
-| `ai_service.py` | Build bounded, redacted evidence context and request schema-constrained remediation from OpenAI. |
+| `ai_service.py` | Build bounded, redacted evidence context; request structured triage, remediation, and patch review from Gemini or OpenAI. |
 | `patch_service.py` | Apply only an exact, human-approved replacement within the mission workspace. |
 | `verification_service.py` | Copy the workspace, test the patch there, and rescan the relevant scanner rule before touching source. |
-| `report_service.py` | Produce an exportable mission report with score change, scanner health, findings, and timeline. |
+| `report_service.py` | Produce JSON and self-contained HTML reports with scanner evidence, agent trace, triage, remediation, and verification. |
 
 ## Mission state machine
 
@@ -66,6 +68,8 @@ The API returns a mission ID immediately and performs cloning/scanning in a back
 - Source snippets are bounded and secret-looking values are redacted before model analysis.
 - Gitleaks findings never send secret-bearing code to the AI service; they receive a human-led rotation workflow instead.
 - Model output is structured with a Pydantic schema.
+- Triage receives scanner metadata only; remediation receives bounded, redacted nearby source context.
+- The Patch Review Agent can request manual review but never applies a patch.
 - A patch is first applied to an isolated copy and rescanned. The original workspace changes only after that verification succeeds.
 - The MVP deliberately has no database or authentication. Mission state is in memory and is suitable only for a hackathon demo.
 

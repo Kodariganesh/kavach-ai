@@ -27,6 +27,21 @@ type Finding = {
   description: string;
   status: FindingStatus;
 };
+type TriageDecision = {
+  finding_id: string;
+  priority_rank: number;
+  rationale: string;
+  next_step: string;
+  source: "gemini" | "openai" | "deterministic";
+  model?: string | null;
+};
+type PatchReview = {
+  verdict: "approved" | "changes_requested" | "manual_review";
+  summary: string;
+  concerns: string[];
+  source: "gemini" | "openai" | "fallback";
+  model?: string | null;
+};
 type VerificationResult = {
   id: string;
   status: "verified" | "failed";
@@ -47,6 +62,7 @@ type Mission = {
   error?: string | null;
   scanners: ScannerStatus[];
   findings: Finding[];
+  triage: TriageDecision[];
   timeline: TimelineEvent[];
   trace: TraceEvent[];
   latest_verification?: VerificationResult | null;
@@ -72,6 +88,7 @@ type PatchProposal = {
   summary: string;
   status: "draft" | "applied" | "verified" | "failed";
   validation_note: string;
+  review?: PatchReview | null;
 };
 
 const demoMission: Mission = {
@@ -97,6 +114,7 @@ const demoMission: Mission = {
     { id: "demo-scanner", agent: "Scanner Agent", action: "Run security scanners", status: "completed", duration_ms: 8400, detail: "Security scanners completed.", attributes: { finding_count: 3, scanner_count: 3 } },
     { id: "demo-remediation", agent: "Remediation Agent", action: "Analyze prioritized findings", status: "completed", duration_ms: 3600, detail: "Remediation guidance prepared.", attributes: { finding_count: 1, openai_response_count: 1 } },
   ],
+  triage: [{ finding_id: "finding-sql-001", priority_rank: 1, rationale: "Critical scanner evidence is prioritized first.", next_step: "Review remediation and approve only after evidence review.", source: "deterministic" }],
   findings: [
     {
       id: "finding-sql-001",
@@ -158,6 +176,7 @@ const demoPatch: PatchProposal = {
   summary: demoExplanation.recommendation,
   status: "draft",
   validation_note: "Demo preview: a live mission validates this in an isolated workspace before applying it.",
+  review: { verdict: "approved", summary: "The parameterized query addresses the reported injection path. Human approval and scanner verification are still required.", concerns: ["Confirm database driver placeholder syntax."], source: "openai", model: "demo" },
 };
 
 const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -465,6 +484,7 @@ export default function Home() {
             {patch && explanation ? <>
               <Code title="- vulnerable" value={patch.patch_before} kind="before" />
               <Code title="+ recommended" value={patch.patch_after} kind="after" />
+              {patch.review && <div className={`patch-review ${patch.review.verdict}`}><b>Independent patch review: {humanize(patch.review.verdict)}</b><p>{patch.review.summary}</p>{patch.review.concerns.length > 0 && <small>Checks: {patch.review.concerns.join(" ")}</small>}<em>{patch.review.source === "gemini" ? `Gemini reviewer${patch.review.model ? ` / ${patch.review.model}` : ""}` : patch.review.source === "openai" ? `OpenAI reviewer${patch.review.model ? ` / ${patch.review.model}` : ""}` : "Manual review required"}</em></div>}
               <p className="patch-note">{patch.validation_note}</p>
               <button className="verify" disabled={!canVerify} onClick={verifyPatch}>
                 {verificationLoading ? "Verifying in isolated workspace..." : patch.status === "verified" ? "Patch verified" : "Approve, apply & verify"}
@@ -479,6 +499,7 @@ export default function Home() {
             <div className="timeline-items">{mission.timeline.map((item, index) => <div key={`${item.label}-${index}`} className={item.status}><i>{item.status === "complete" ? "OK" : index + 1}</i><div><b>{item.label}</b><small>{item.detail}</small></div></div>)}</div>
             <div className="trace-header"><b>Agent execution trace</b><span>{mission.trace.length} events</span></div>
             <div className="trace-items">{mission.trace.map((event) => <div className={`trace-event ${event.status}`} key={event.id}><span className="trace-status" /><div><b>{event.agent}</b><small>{event.action} · {event.detail}</small></div><em>{event.duration_ms == null ? "running" : `${event.duration_ms} ms`}</em></div>)}</div>
+            {mission.triage.length > 0 && <div className="triage-summary"><b>Triage Agent decision</b><small>#{mission.triage[0].priority_rank} · {mission.triage[0].rationale}</small></div>}
           </section>
           <section className="panel scanner-health">
             <div className="panel-title"><h3>Scanner health</h3><span className="report-actions"><button className="report-button" onClick={downloadHtmlReport}>Download HTML</button><button className="report-button" onClick={downloadReport}>Download JSON</button></span></div>

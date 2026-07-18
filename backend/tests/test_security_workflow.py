@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 from app.ai_service import AnalysisService
 from app.models import Explanation, Finding, PatchProposal, ScannerStatus, Severity
@@ -115,6 +116,23 @@ class SecurityWorkflowTests(unittest.TestCase):
         self.assertFalse(explanation.patch_is_actionable)
         self.assertIn("rotate", explanation.recommendation.lower())
 
+    def test_live_remediation_returns_an_explanation_when_an_ai_client_is_available(self) -> None:
+        service = AnalysisService()
+        service._client = object()
+        service._provider = "gemini"
+        service._model = "test-model"
+        service._request_remediation = lambda *_: SimpleNamespace(  # type: ignore[method-assign]
+            root_cause="Unsafe call receives untrusted input.",
+            impact="Unsafe behavior may be exploitable.",
+            recommendation="Use the safe function.",
+            confidence=91,
+            patch_before="dangerous(user_input)",
+            patch_after="safe(user_input)",
+        )
+        explanation = service.analyze(finding(), self.workspace)
+        self.assertEqual(explanation.source, "gemini")
+        self.assertTrue(explanation.patch_is_actionable)
+
     def test_scanner_ignores_nested_dependency_directories(self) -> None:
         nested_venv = self.workspace / "agent" / "venv"
         nested_venv.mkdir(parents=True)
@@ -147,7 +165,8 @@ class SecurityWorkflowTests(unittest.TestCase):
         service.execute(mission.id)
         prepared = service.get(mission.id)
         self.assertIsNotNone(prepared)
-        assert prepared is not None
+        if prepared is None:
+            self.fail("Mission disappeared before remediation could be prepared.")
         self.assertEqual(prepared.stage.value, "patch_ready")
 
         patch = service.propose_patch(mission.id, prepared.findings[0].id)
@@ -155,7 +174,8 @@ class SecurityWorkflowTests(unittest.TestCase):
         completed = service.get(mission.id)
         self.assertEqual(result.status, "verified")
         self.assertIsNotNone(completed)
-        assert completed is not None
+        if completed is None:
+            self.fail("Mission disappeared before verification could complete.")
         self.assertEqual(completed.stage.value, "verified")
         self.assertEqual(completed.security_score, 100)
         self.assertEqual(completed.findings[0].status, "verified")
@@ -165,7 +185,9 @@ class SecurityWorkflowTests(unittest.TestCase):
                 ("Mission Coordinator", "completed"),
                 ("Repository Agent", "completed"),
                 ("Scanner Agent", "completed"),
+                ("Triage Agent", "completed"),
                 ("Remediation Agent", "completed"),
+                ("Patch Review Agent", "completed"),
                 ("Verification Agent", "completed"),
             ],
         )
@@ -177,6 +199,7 @@ class SecurityWorkflowTests(unittest.TestCase):
         self.assertIn("Unsafe call", html_report)
         self.assertIn("OpenAI remediation", html_report)
         self.assertIn("Agent execution trace", html_report)
+        self.assertIn("Triage decisions", html_report)
 
 
 if __name__ == "__main__":

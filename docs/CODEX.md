@@ -41,6 +41,17 @@ Bandit
 
 Gitleaks
 
+AI providers
+
+Gemini or OpenAI with Pydantic structured outputs
+
+Workflow
+
+- Preserve the human-approved security workflow.
+- Keep scanner evidence deterministic; use AI only for triage, remediation, and patch review.
+- Never send secret-bearing source from Gitleaks findings to an AI provider.
+- Run backend tests and frontend TypeScript checks after relevant changes.
+
 Always explain
 
 - What files changed

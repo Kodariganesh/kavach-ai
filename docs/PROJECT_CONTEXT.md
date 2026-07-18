@@ -29,8 +29,10 @@ Developers receive security findings but still need to understand the vulnerabil
 GitHub Repository
   -> Clone Repository
   -> Run Security Scanners
-  -> Normalize Evidence and Prioritize Risk
-  -> AI Security Analysis
+  -> Normalize Evidence
+  -> AI Triage Agent prioritizes risk
+  -> AI Remediation Agent explains the finding and drafts a patch
+  -> AI Patch Review Agent critiques the draft
   -> Human-approved Patch Proposal
   -> Isolated Verification Rescan
   -> Mission Report
@@ -43,7 +45,7 @@ GitHub Repository
 - Next.js 15
 - React
 - TypeScript
-- Tailwind CSS
+- CSS modules/global CSS
 
 ### Backend
 
@@ -58,8 +60,8 @@ GitHub Repository
 
 ### AI
 
-- OpenAI Responses API
-- Structured Outputs with Pydantic
+- Gemini API or OpenAI Responses API
+- Structured outputs with Pydantic
 
 ### Git
 
@@ -70,6 +72,7 @@ GitHub Repository
 - Security-first, evidence-backed workflow
 - Clean Architecture and small service modules
 - Background mission orchestration with observable state
+- Bounded multi-agent roles with an execution trace
 - Human approval before a source change
 - Isolated patch verification before applying to the mission workspace
 - No database or authentication for the MVP
@@ -89,4 +92,4 @@ Dark cyber-security Mission Control dashboard. The live mission and demo preview
 
 ## Goal
 
-Build a convincing, working Security-theme hackathon MVP in 24 hours. Prioritize verifiable evidence over unbounded autonomy.
+Build a convincing, working Security-theme hackathon MVP. Prioritize verifiable evidence over unbounded autonomy.

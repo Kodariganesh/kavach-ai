@@ -20,7 +20,7 @@ Returns `202 Accepted` immediately while a background worker clones and scans th
 
 `GET /api/v1/mission/{mission_id}`
 
-Returns stage, progress, score, scanner health, normalized findings, timeline events, and the latest verification result.
+Returns stage, progress, score, scanner health, normalized findings, triage decisions, timeline events, agent execution trace, and the latest verification result.
 
 ## List findings
 
@@ -38,7 +38,7 @@ Returns structured root cause, impact, recommendation, confidence, and patch gui
 
 `POST /api/v1/mission/{mission_id}/findings/{finding_id}/patch`
 
-Returns a human-reviewable patch proposal. Secret findings intentionally do not produce an automated source patch.
+Returns a human-reviewable patch proposal, including an independent Patch Review Agent verdict when available. Secret findings intentionally do not produce an automated source patch.
 
 ## Approve and verify a patch
 
@@ -50,7 +50,13 @@ Kavach applies the exact proposed replacement in an isolated copy, rescans the r
 
 `GET /api/v1/mission/{mission_id}/report`
 
-Returns a JSON audit report with scanner status, findings, score change, timeline, and verification evidence.
+Returns a JSON audit report with scanner status, findings, triage, agent trace, score change, timeline, and verification evidence.
+
+## Export HTML report
+
+`GET /api/v1/mission/{mission_id}/report.html`
+
+Returns a self-contained browser-readable report with findings, remediation steps, patch-review notes, scanner health, and verification evidence.
 
 ## Clean up a mission
 

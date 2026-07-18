@@ -23,6 +23,7 @@ class ReportService:
             scanners=mission.scanners,
             timeline=mission.timeline,
             trace=mission.trace,
+            triage=mission.triage,
             latest_verification=mission.latest_verification,
         )
 
@@ -44,6 +45,11 @@ class ReportService:
             f"{event.duration_ms if event.duration_ms is not None else 'running'} ms</span><small>{escape(event.detail)}</small></li>"
             for event in mission.trace
         ) or "<li>No agent trace events were recorded.</li>"
+        triage_rows = "".join(
+            f"<li><b>#{item.priority_rank} {escape(self._finding_title(mission.findings, item.finding_id))}</b> "
+            f"<span>{escape(item.source)}</span><small>{escape(item.rationale)} Next: {escape(item.next_step)}</small></li>"
+            for item in mission.triage
+        ) or "<li>Findings were prioritized by deterministic severity order.</li>"
         verification = "No patch verification has been requested." if mission.latest_verification is None else escape(mission.latest_verification.detail)
         return f"""<!doctype html>
 <html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>
@@ -57,6 +63,7 @@ body{{background:#08111b;color:#eaf5fc;font:15px/1.55 Arial,sans-serif;margin:0}
 <div class='stats'><div class='stat'><small>SECURITY SCORE</small><b>{mission.security_score}/100</b></div><div class='stat'><small>OPEN FINDINGS</small><b>{sum(severity_counts.values())}</b></div><div class='stat'><small>SCANNERS COMPLETE</small><b>{sum(item.status == 'complete' for item in mission.scanners)}/{len(mission.scanners)}</b></div><div class='stat'><small>AI REMEDIATIONS</small><b>{sum(item.source in {'openai', 'gemini'} for item in analyses.values())}</b></div></div>
 <h2>Executive summary</h2><div class='card'>{escape(self._summary(mission, [item for item in mission.findings if item.status != 'verified']))}</div>
 <h2>Scanner health</h2><div class='card'><table><thead><tr><th>Scanner</th><th>Status</th><th>Result</th></tr></thead><tbody>{scanner_rows}</tbody></table></div>
+<h2>Triage decisions</h2><div class='card'><ul>{triage_rows}</ul></div>
 <h2>Findings and remediation</h2>{findings or "<div class='card'>No findings were recorded.</div>"}
 <h2>Verification evidence</h2><div class='card'>{verification}</div>
 <h2>Agent execution trace</h2><div class='card'><ul>{trace_rows}</ul></div>
@@ -80,6 +87,9 @@ body{{background:#08111b;color:#eaf5fc;font:15px/1.55 Arial,sans-serif;margin:0}
                 after = patch.patch_after if patch else analysis.patch_after
                 patch_status = patch.status if patch else "not proposed"
                 analysis_html += f"<p><b>Patch status:</b> {escape(patch_status)}</p><pre class='before'>{escape(before)}</pre><pre class='after'>{escape(after)}</pre>"
+                if patch and patch.review:
+                    concerns = " ".join(patch.review.concerns)
+                    analysis_html += f"<p><b>Independent patch review ({escape(patch.review.source)}):</b> {escape(patch.review.verdict)} â€” {escape(patch.review.summary)} {escape(concerns)}</p>"
             elif analysis.notice:
                 analysis_html += f"<p><b>Manual remediation:</b> {escape(analysis.notice)}</p>"
         verified = mission.latest_verification if mission.latest_verification and mission.latest_verification.finding_id == finding.id else None
@@ -98,6 +108,11 @@ body{{background:#08111b;color:#eaf5fc;font:15px/1.55 Arial,sans-serif;margin:0}
         if "bind" in rule or "host" in rule:
             return "Avoid binding development services to all interfaces; use a production server and restrict network exposure."
         return "Review the scanner evidence, use a safer API or validated input path, and add a regression test."
+
+    @staticmethod
+    def _finding_title(findings: list[Finding], finding_id: str) -> str:
+        finding = next((item for item in findings if item.id == finding_id), None)
+        return finding.title if finding else finding_id
 
     @staticmethod
     def _severity_counts(findings: list[Finding]) -> dict[str, int]:
