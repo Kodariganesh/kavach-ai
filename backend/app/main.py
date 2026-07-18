@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parents[1] / ".env", override=False)
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Response
+from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.models import Explanation, Finding, Mission, MissionReport, PatchProposal, StartMissionRequest, StartMissionResponse, VerificationResult
@@ -88,6 +89,14 @@ def verify_patch(mission_id: str, patch_id: str) -> VerificationResult:
 def get_report(mission_id: str) -> MissionReport:
     try:
         return mission_service.report(mission_id)
+    except MissionNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@app.get("/api/v1/mission/{mission_id}/report.html", response_class=HTMLResponse)
+def get_html_report(mission_id: str) -> HTMLResponse:
+    try:
+        return HTMLResponse(mission_service.html_report(mission_id))
     except MissionNotFoundError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
 

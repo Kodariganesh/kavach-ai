@@ -37,6 +37,7 @@ form button, .verify { background: var(--cyan); color: #042029; border: 0; borde
 form button { min-height: 46px; }
 form button:disabled, .verify:disabled { cursor: not-allowed; opacity: .5; }
 .demo-button, .report-button { background: transparent; border: 1px solid #294557; border-radius: 6px; color: #a9bdca; cursor: pointer; font-size: 10px; letter-spacing: .7px; padding: 8px 11px; }
+.report-actions { display: flex; gap: 6px; }
 .demo-button { margin-top: 12px; }
 .demo-button:hover, .report-button:hover { border-color: var(--cyan); color: var(--cyan); }
 .mission-message { background: #0c1d29; border: 1px solid #224256; border-radius: 7px; color: #b8cedb; font-size: 12px; line-height: 1.45; margin: 0 0 18px; padding: 11px 14px; text-align: center; }

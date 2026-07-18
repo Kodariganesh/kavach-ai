@@ -345,6 +345,27 @@ export default function Home() {
     }
   }
 
+  async function downloadHtmlReport() {
+    if (!mission || isDemo) {
+      setMessage("Launch a live mission to download its human-readable security report.");
+      return;
+    }
+    try {
+      const response = await fetch(`${apiUrl}/api/v1/mission/${mission.id}/report.html`);
+      if (!response.ok) throw new Error(await responseMessage(response));
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${mission.repository_name}-kavach-security-report.html`;
+      link.click();
+      URL.revokeObjectURL(url);
+      setMessage("HTML security report downloaded with findings, remediation steps, and agent trace evidence.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Kavach could not create the HTML security report.");
+    }
+  }
+
   function runDemo() {
     setIsDemo(true);
     setMission(demoMission);
@@ -450,7 +471,7 @@ export default function Home() {
             <div className="trace-items">{mission.trace.map((event) => <div className={`trace-event ${event.status}`} key={event.id}><span className="trace-status" /><div><b>{event.agent}</b><small>{event.action} · {event.detail}</small></div><em>{event.duration_ms == null ? "running" : `${event.duration_ms} ms`}</em></div>)}</div>
           </section>
           <section className="panel scanner-health">
-            <div className="panel-title"><h3>Scanner health</h3><button className="report-button" onClick={downloadReport}>Download report</button></div>
+            <div className="panel-title"><h3>Scanner health</h3><span className="report-actions"><button className="report-button" onClick={downloadHtmlReport}>Download HTML</button><button className="report-button" onClick={downloadReport}>Download JSON</button></span></div>
             {mission.scanners.length ? mission.scanners.map((scanner) => <div className="scanner-row" key={scanner.scanner}><span className={`scanner-state ${scanner.status}`} /><div><b>{scanner.scanner}</b><small>{scanner.detail}</small></div><em>{scanner.status}</em></div>) : <EmptyState title="Waiting for scanners" text="Scanner availability and result counts will appear here." />}
           </section>
         </section>

@@ -172,6 +172,12 @@ class SecurityWorkflowTests(unittest.TestCase):
         self.assertTrue(all(event.duration_ms is not None for event in completed.trace))
         self.assertEqual((self.workspace / "src" / "example.py").read_text(encoding="utf-8"), "safe(user_input)\n")
 
+        html_report = service.html_report(mission.id)
+        self.assertIn("Kavach AI Security Report", html_report)
+        self.assertIn("Unsafe call", html_report)
+        self.assertIn("OpenAI remediation", html_report)
+        self.assertIn("Agent execution trace", html_report)
+
 
 if __name__ == "__main__":
     unittest.main()

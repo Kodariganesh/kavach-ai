@@ -400,6 +400,15 @@ class MissionService:
         with record.lock:
             return self._report_service.build(record.mission.model_copy(deep=True))
 
+    def html_report(self, mission_id: str) -> str:
+        record = self._record(mission_id)
+        with record.lock:
+            return self._report_service.build_html(
+                record.mission.model_copy(deep=True),
+                {finding_id: analysis.model_copy(deep=True) for finding_id, analysis in record.analyses.items()},
+                {patch_id: proposal.model_copy(deep=True) for patch_id, proposal in record.proposals.items()},
+            )
+
     def cleanup(self, mission_id: str) -> None:
         with self._records_lock:
             record = self._records.pop(mission_id, None)
