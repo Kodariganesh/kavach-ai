@@ -1,3 +1,4 @@
+import hashlib
 from pathlib import Path
 
 from app.models import PatchProposal
@@ -21,17 +22,25 @@ class PatchService:
         after = proposal.patch_after.strip("\n")
         if not before or not after:
             raise PatchError("The patch must include both the original and replacement code.")
+        if proposal.source_sha256 and self.source_sha256(source_path) != proposal.source_sha256:
+            raise PatchError("The source file changed since this patch was proposed. Re-analyze the finding before applying it.")
 
         occurrences = source.count(before)
         if occurrences == 0:
             raise PatchError("The original code no longer matches this patch. Re-analyze the finding before applying it.")
         if occurrences > 1:
             raise PatchError("The proposed code occurs more than once, so Kavach will not choose a location automatically.")
+        if proposal.source_line and source[: source.index(before)].count("\n") + 1 > proposal.source_line:
+            raise PatchError("The proposed code no longer occurs at the scanned finding location.")
 
         try:
             source_path.write_text(source.replace(before, after, 1), encoding="utf-8")
         except OSError as error:
             raise PatchError(f"Kavach could not write the proposed source file: {error}") from error
+
+    @staticmethod
+    def source_sha256(source_path: Path) -> str:
+        return hashlib.sha256(source_path.read_bytes()).hexdigest()
 
     @staticmethod
     def source_path(workspace: Path, file_path: str) -> Path:

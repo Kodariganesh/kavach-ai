@@ -6,7 +6,6 @@ from pydantic import BaseModel, Field
 
 
 def utc_now() -> datetime:
-    """Return a timezone-aware timestamp for the mission audit trail."""
     return datetime.now(timezone.utc)
 
 
@@ -44,8 +43,6 @@ class TimelineEvent(BaseModel):
 
 
 class TraceEvent(BaseModel):
-    """A safe, user-visible record of one agent or tool execution."""
-
     id: str
     agent: str
     action: str
@@ -114,6 +111,8 @@ class PatchProposal(BaseModel):
     patch_before: str
     patch_after: str
     summary: str
+    source_sha256: str = ""
+    source_line: int = Field(default=1, ge=1)
     status: Literal["draft", "applied", "verified", "failed"] = "draft"
     created_at: datetime = Field(default_factory=utc_now)
     validation_note: str = "This patch has not been applied. Human approval is required."

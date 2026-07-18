@@ -289,6 +289,7 @@ class MissionService:
 
         with record.lock:
             finding = self._finding(record.mission, finding_id)
+            source_path = self._patch_service.source_path(Path(record.mission.workspace_path), finding.file_path)
             proposal = PatchProposal(
                 id=str(uuid4()),
                 finding_id=finding.id,
@@ -296,6 +297,8 @@ class MissionService:
                 patch_before=analysis.patch_before,
                 patch_after=analysis.patch_after,
                 summary=analysis.recommendation,
+                source_sha256=self._patch_service.source_sha256(source_path),
+                source_line=finding.line,
             )
             record.proposals[proposal.id] = proposal
             return proposal.model_copy(deep=True)

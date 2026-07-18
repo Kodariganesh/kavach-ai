@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 type Severity = "critical" | "high" | "medium" | "low";
 type FindingStatus = "open" | "analyzed" | "patch_ready" | "verified";
@@ -174,6 +174,9 @@ export default function Home() {
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [verificationLoading, setVerificationLoading] = useState(false);
   const [message, setMessage] = useState<string | null>("Demo preview loaded. Start a live mission to generate scanner-backed evidence.");
+  const requestAbort = useRef<AbortController | null>(null);
+
+  useEffect(() => () => requestAbort.current?.abort(), []);
 
   const counts = useMemo(() => {
     const findings = mission?.findings ?? [];
@@ -192,6 +195,9 @@ export default function Home() {
       setMessage("Enter a public GitHub HTTPS repository URL to launch a live mission.");
       return;
     }
+    requestAbort.current?.abort()
+    const controller = new AbortController()
+    requestAbort.current = controller
     setLoading(true);
     setIsDemo(false);
     setMission(null);
@@ -204,23 +210,25 @@ export default function Home() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ repository_url: repositoryUrl.trim() }),
+        signal: controller.signal,
       });
       if (!response.ok) throw new Error(await responseMessage(response));
       const { mission_id } = (await response.json()) as { mission_id: string };
-      await pollMission(mission_id);
+      await pollMission(mission_id, controller.signal);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Kavach could not launch the live mission.");
+      if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : "Kavach could not launch the live mission.");
     } finally {
       setLoading(false);
     }
   }
 
-  async function pollMission(missionId: string) {
+  async function pollMission(missionId: string, signal: AbortSignal) {
     let analysisLoaded = false;
     for (let attempt = 0; attempt < 150; attempt += 1) {
-      const response = await fetch(`${apiUrl}/api/v1/mission/${missionId}`);
+      const response = await fetch(`${apiUrl}/api/v1/mission/${missionId}`, { signal });
       if (!response.ok) throw new Error(await responseMessage(response));
       const nextMission = (await response.json()) as Mission;
+      if (signal.aborted) return;
       setMission(nextMission);
 
       if (nextMission.error) {
@@ -231,7 +239,7 @@ export default function Home() {
       const priorityFinding = highestPriorityFinding(nextMission.findings);
       if (!analysisLoaded && priorityFinding && !pendingStages.has(nextMission.stage)) {
         analysisLoaded = true;
-        await loadExplanation(priorityFinding, nextMission.id);
+        await loadExplanation(priorityFinding, nextMission.id, signal);
       }
 
       if (!pendingStages.has(nextMission.stage)) {
@@ -239,11 +247,12 @@ export default function Home() {
         return;
       }
       await delay(1200);
+      if (signal.aborted) return;
     }
     setMessage("The mission is still running. Refresh the dashboard shortly to view the latest status.");
   }
 
-  async function loadExplanation(finding: Finding, missionId: string) {
+  async function loadExplanation(finding: Finding, missionId: string, signal?: AbortSignal) {
     setSelected(finding);
     setPatch(null);
     if (missionId === demoMission.id) {
@@ -255,14 +264,14 @@ export default function Home() {
 
     setAnalysisLoading(true);
     try {
-      const analysisResponse = await fetch(`${apiUrl}/api/v1/mission/${missionId}/findings/${finding.id}/analyze`, { method: "POST" });
+      const analysisResponse = await fetch(`${apiUrl}/api/v1/mission/${missionId}/findings/${finding.id}/analyze`, { method: "POST", signal });
       if (!analysisResponse.ok) throw new Error(await responseMessage(analysisResponse));
       const nextExplanation = (await analysisResponse.json()) as Explanation;
       setExplanation(nextExplanation);
       setMessage(nextExplanation.notice ?? "AI remediation is ready. Review the evidence before approving a patch.");
 
       if (nextExplanation.patch_is_actionable) {
-        const patchResponse = await fetch(`${apiUrl}/api/v1/mission/${missionId}/findings/${finding.id}/patch`, { method: "POST" });
+        const patchResponse = await fetch(`${apiUrl}/api/v1/mission/${missionId}/findings/${finding.id}/patch`, { method: "POST", signal });
         if (!patchResponse.ok) throw new Error(await responseMessage(patchResponse));
         setPatch((await patchResponse.json()) as PatchProposal);
       }
@@ -367,6 +376,7 @@ export default function Home() {
   }
 
   function runDemo() {
+    requestAbort.current?.abort();
     setIsDemo(true);
     setMission(demoMission);
     setSelected(demoMission.findings[0]);
@@ -482,7 +492,7 @@ export default function Home() {
 
 function highestPriorityFinding(findings: Finding[]): Finding | null {
   const order: Record<Severity, number> = { critical: 0, high: 1, medium: 2, low: 3 };
-  return [...findings].filter((finding) => finding.status !== "verified").sort((left, right) => order[left.severity] - order[right.severity])[0] ?? null;
+  return findings.reduce<Finding | null>((highest, finding) => (finding.status !== "verified" && (!highest || highest.status === "verified" || order[finding.severity] < order[highest.severity]) ? finding : highest), null);
 }
 
 function humanize(value: string) {

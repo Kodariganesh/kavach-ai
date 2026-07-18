@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+from itertools import islice
 from pathlib import Path
 from typing import Any
 
@@ -120,14 +121,13 @@ class AnalysisService:
         if source_path is None:
             return "Source file is not available inside the cloned workspace."
 
+        start_index = max(0, finding.line - 4)
         try:
-            lines = source_path.read_text(encoding="utf-8", errors="replace").splitlines()
+            with source_path.open(encoding="utf-8", errors="replace") as source_file:
+                source = "".join(islice(source_file, start_index, finding.line + 3)).rstrip("\n")
         except OSError:
             return "Kavach could not read the nearby source code."
 
-        start_index = max(0, finding.line - 4)
-        end_index = min(len(lines), finding.line + 3)
-        source = "\n".join(lines[start_index:end_index])
         source = self._redact_sensitive_values(source)
         return source[: self._MAX_CONTEXT_CHARACTERS] or "No nearby source context found."
 

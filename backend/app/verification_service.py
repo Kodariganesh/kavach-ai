@@ -1,6 +1,8 @@
 import shutil
 import tempfile
 from pathlib import Path
+
+from git import GitCommandError, InvalidGitRepositoryError, Repo
 from uuid import uuid4
 
 from app.models import Finding, PatchProposal, VerificationResult
@@ -26,10 +28,16 @@ class VerificationService:
     ) -> VerificationResult:
         with tempfile.TemporaryDirectory(prefix="kavach-verify-") as temporary_directory:
             candidate_workspace = Path(temporary_directory) / "workspace"
+            repository: Repo | None = None
             try:
-                shutil.copytree(workspace, candidate_workspace, ignore=shutil.ignore_patterns(".git", "node_modules", ".venv", "venv"))
+                try:
+                    repository = Repo(workspace)
+                    repository.git.worktree("add", "--detach", str(candidate_workspace), "HEAD")
+                except (GitCommandError, InvalidGitRepositoryError, OSError):
+                    shutil.copytree(workspace, candidate_workspace, ignore=shutil.ignore_patterns(".git", "node_modules", ".venv", "venv"))
                 self._patch_service.apply(candidate_workspace, proposal)
             except (OSError, PatchError) as error:
+                self._cleanup_worktree(repository, candidate_workspace)
                 return self._result(
                     mission_id=mission_id,
                     proposal=proposal,
@@ -43,6 +51,7 @@ class VerificationService:
 
             rescanned_findings, scanner_status = self._scanner_service.scan_for(finding.scanner, candidate_workspace)
             if scanner_status.status != "complete":
+                self._cleanup_worktree(repository, candidate_workspace)
                 return self._result(
                     mission_id=mission_id,
                     proposal=proposal,
@@ -56,6 +65,7 @@ class VerificationService:
 
             still_present = any(self._matches_target(finding, result) for result in rescanned_findings)
             if still_present:
+                self._cleanup_worktree(repository, candidate_workspace)
                 return self._result(
                     mission_id=mission_id,
                     proposal=proposal,
@@ -70,7 +80,7 @@ class VerificationService:
                     security_score_after=security_score_before,
                 )
 
-            return self._result(
+            result = self._result(
                 mission_id=mission_id,
                 proposal=proposal,
                 finding=finding,
@@ -83,6 +93,17 @@ class VerificationService:
                 security_score_before=security_score_before,
                 security_score_after=security_score_before,
             )
+            self._cleanup_worktree(repository, candidate_workspace)
+            return result
+
+    @staticmethod
+    def _cleanup_worktree(repository: Repo | None, workspace: Path) -> None:
+        if repository is None:
+            return
+        try:
+            repository.git.worktree("remove", "--force", str(workspace))
+        finally:
+            repository.close()
 
     @staticmethod
     def _matches_target(original: Finding, rescanned: Finding) -> bool:
